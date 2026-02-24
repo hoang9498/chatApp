@@ -1,0 +1,10 @@
+@{
+    ViewBag.Title = "Login Failed";
+}
+<h2>Login Failed</h2>
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger">
+        @ViewBag.Error
+    </div>
+}

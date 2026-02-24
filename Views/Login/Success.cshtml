@@ -1,0 +1,39 @@
+@{
+    ViewData["Title"] = "Login Success";
+}
+<div class="login-success">
+    <h2>Login Successful</h2>
+    <p>@ViewBag.Message</p>
+    <p>You can now access the chat room.</p>
+    <button><a href="@Url.Action("Index", "Home")">Go to Chat Room</a></button>
+    <button><a href="@Url.Action("Logout", "Login")">Logout</a></button>
+</div>
+<style>
+    .login-success {
+        text-align: center;
+        margin-top: 50px;
+    }
+    .login-success h2 {
+        color: #4CAF50;
+    }
+    .login-success button {
+        margin: 10px;
+        padding: 10px 20px;
+        font-size: 16px;
+    }
+    .login-success a {
+        text-decoration: none;
+        color: white;
+    }
+    .login-success button a {
+        color: white;
+    }
+    .login-success button {
+        background-color: #4CAF50;
+        border: none;
+        border-radius: 5px;
+    }
+    .login-success button:hover {
+        background-color: #45a049;
+    }
+</style>

@@ -1,0 +1,1537 @@
+﻿@{
+    ViewBag.Title = "Chat App";
+    dynamic? currentUserId = ViewBag.CurrentUserId;
+    // if change currentUserId then sending it back to server!
+    // it's so dangerous 
+}
+<div class="parent">
+    <div class="avatarArea">
+        <div class="avatar-frame">
+            <div class="my-profile profile">
+                <img src="" alt="Profile Picture" />
+                <span class="my-username"></span>
+            </div>
+            <div class="logout-popup hidden">Logout</div>
+        </div>
+    </div>
+    <div class="searchAndList">
+            <div class="wrapper">
+                <button class="left-arrow hidden" id="leftArrow" aria-label="Go Back">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <input type="text" id="myInput" placeholder="Search..." class="search" />
+            </div>
+            <div id="userList" class="visible"></div>
+            <div id="searchedUser" class="hidden"></div>
+    </div>
+    <div id="chatApp">
+        <h2>Chat</h2>
+        <div id="chat" class="hide-scrollbar"></div>
+        <div class="chat-box">
+            <!-- Preview on top -->
+            <div class="preview-container" id="previewContainer"></div>
+            <!-- Input row -->
+            <div id="messageContainer">
+            <input type="file" id="imageInput" hidden>
+            <button class="icon-btn" id="upload-button"
+            onclick="document.getElementById('imageInput').click()" disabled>
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            <textarea id="messageTextarea" name="message" required></textarea>
+            <button id="sendButton" type="submit" disabled><i class="fa-solid fa-paper-plane"></i></button>
+            </div>
+        </div>
+            
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+<script>
+    let isSelected = null;
+    let prevSelected = null;
+    let randomRoomId = null;
+    let file = null;
+    const uploadButton = document.getElementById('upload-button');
+    const sendButton = document.getElementById('sendButton');
+    const messageTextarea = document.getElementById('messageTextarea');
+    const imageInput = document.getElementById("imageInput");
+    const previewContainer = document.getElementById("previewContainer");
+    const currentUserId = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(currentUserId));
+    const userList = document.getElementById("userList");
+    const logout = document.querySelector('.logout-popup');
+    const avatarFrame = document.querySelector('.avatar-frame');
+    const chat = document.getElementById('chat');
+
+    let allMessages = [];
+    let newScrollHeigh = 0;
+    let oldScrollHeigh = 0;
+
+    let myInfor = null;
+    const displayedMsgMap = new Map(); //contain RoomId and displayed messages
+    const createdRoomMap = new Map(); //contain RoomId and bool value
+    const searchedUserMap = new Map(); //contain randomRoomId and searched User 
+    const inforMap = new Map(); // contain other user infor
+    
+    this.connection = new signalR.HubConnectionBuilder()
+        .withUrl("/chathub")
+        .withAutomaticReconnect()
+        .configureLogging(signalR.LogLevel.Debug)
+        .build();
+    //1 send current user's infor to Client B
+    //2 Client B add chatroom to sidebar and join room
+    //3 inforMap,createdRoomMap update
+    connection.on("JoinRoomCommand", (chatroomId,other) => {
+        console.log("JoinRoomCommand 1", new Date());
+        // Client B now calls the JoinChatroom method themselves
+        connection.invoke("JoinChatroom", chatroomId)
+        .then(() => console.log(" JoinChatroom after JoinRoomCommand 1", new Date()) );
+        console.log("JoinRoomCommand 2", new Date());
+        createdRoomMap.set(chatroomId,true);
+        inforMap.set(chatroomId,other);
+        const div = document.createElement('div');
+        const wrapDiv = document.createElement('div');
+        const lastMsgDiv = document.createElement('div');
+        const innerDiv = document.createElement('div');
+        const threeDotDiv = document.createElement('div');
+        const popUpDiv = document.createElement('div');
+        div.dataset.id= chatroomId;
+        div.className = 'sidebarItem';
+        div.classList.add('default-bgr');
+        const ProfileDiv = document.createElement('div');
+        ProfileDiv.className = 'profile';
+        // Create the img element
+        const img = document.createElement('img');
+        // Set the attributes
+        img.src = other.avatar;
+        ProfileDiv.appendChild(img);
+        // user name div
+        const NameDiv = document.createElement('div');
+        NameDiv.className = 'friends-credent';
+        NameDiv.innerHTML = `<span class="friends-name">
+                            ${other.userName}</span>`;
+        // last message div
+        lastMsgDiv.className = 'truncate';
+        wrapDiv.className = 'name-and-lastmsg';
+        wrapDiv.appendChild(NameDiv);
+        wrapDiv.appendChild(lastMsgDiv);
+        // three dots div
+        threeDotDiv.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
+        // popup div
+        popUpDiv.className = 'menu-popup hidden';
+        popUpDiv.innerHTML = `<span>
+                            Delete </span>`;
+        innerDiv.className = 'dropdown';
+        innerDiv.appendChild(threeDotDiv);
+        innerDiv.appendChild(popUpDiv);
+        div.appendChild(ProfileDiv);
+        div.appendChild(wrapDiv);
+        div.appendChild(innerDiv);
+        userList.appendChild(div);
+        innerDiv.onclick = (e) => {
+            e.stopPropagation(); // Prevent triggering the div click event
+            popUpDiv.classList.toggle('hidden');
+        };
+        // 2. Close menu if user clicks outside of it
+        window.addEventListener('click', () => {
+            if (!popUpDiv.classList.contains('hidden')) {
+                popUpDiv.classList.add('hidden');
+            }
+        });
+        
+        popUpDiv.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent triggering the div click event
+            
+            // Remove from UI
+            const card = popUpDiv.closest('.sidebarItem');
+            if(card){
+                const roomId = card.dataset.id;
+                const other = inforMap.get(roomId).userId;
+                formData1 = new FormData();
+                formData1.append("chatroomId", roomId);
+                fetch('/Home/LeaveChatroom', {
+                    method: 'POST',
+                    body: formData1
+                }).catch( error => console.error('Error leaving chatroom:', error));
+                const chatAreaToRemove = document.querySelector('.chatArea[data-id="'
+                + roomId + '"]');
+                if (chatAreaToRemove) {
+                    chatAreaToRemove.remove();
+                }
+                // Delete chatroom
+                console.log("Delete chatroom:", roomId);
+                card.remove();
+                if(isSelected === roomId){
+                    isSelected = null;
+                    uploadButton.disabled = true;
+                    sendButton.disabled = true;
+                }
+                if(createdRoomMap.has(roomId)){
+                    createdRoomMap.delete(roomId);
+                }
+                if(searchedUserMap.has(roomId)){
+                    searchedUserMap.delete(roomId);
+                }
+                if(inforMap.has(roomId)){
+                    inforMap.delete(roomId);
+                }
+                
+            }
+        });
+        
+        div.onclick = async () => {
+            prevSelected= isSelected;
+            isSelected= chatroomId;
+            if(prevSelected){
+                const prevDiv = document.querySelector('.sidebarItem[data-id="'
+                    + prevSelected + '"]');
+                prevDiv.classList.replace('selected-bgr','default-bgr');
+            }
+            div.classList.replace('default-bgr','selected-bgr');
+            div.children[1].children[1].classList.remove('bold-fw');
+            // Disable buttons initially
+            uploadButton.disabled = false;
+            sendButton.disabled = false;
+            messageTextarea.focus();
+            chatsSwitching(div); 
+        };
+
+        const div1 = document.createElement('div');
+        div1.dataset.id= chatroomId;
+        div1.className = 'chatArea';
+        chat.appendChild(div1);
+    });
+
+    connection.on("ReceiveMessage", (chatroomId, senderId, message) => {
+        const div = document.createElement('div');
+        const innerDiv = document.createElement('div');
+        const timeDiv = document.createElement('div');
+        const element = document.querySelector('.chatArea[data-id="' + chatroomId + '"]');
+        const item = document.querySelector('.sidebarItem[data-id="' + chatroomId + '"]');
+        if(!item){
+            return; // Exit if item is deleted
+        }
+        console.log("message:",message, "at time:", new Date());
+        item.children[1].children[1].innerText = message; // last message update
+        if(senderId !== currentUserId){
+            item.children[1].children[1].classList.add('bold-fw');
+            const outerDiv = document.createElement('div');
+            outerDiv.classList.add('message','other');
+            //profie div
+            const userInfo = inforMap.get(chatroomId);
+            const ProfileDiv = document.createElement('div');
+            ProfileDiv.className = 'profile';
+            // Create the img element
+            const ProfImg = document.createElement('img');
+            ProfImg.src = userInfo.avatar;
+            ProfileDiv.appendChild(ProfImg);
+            outerDiv.appendChild(ProfileDiv);
+            // message div
+            innerDiv.classList.add('other-color','innerDiv');
+            timeDiv.classList.add('timeDiv', 'hidden');
+            innerDiv.innerText = message;
+            let time = new Date();
+            timeDiv.innerText=time.toLocaleTimeString();
+            div.appendChild(innerDiv);
+            div.appendChild(timeDiv);
+            div.addEventListener('click', () => {
+                                timeDiv.classList.toggle('hidden');
+                            });
+            //append to chat area
+            outerDiv.appendChild(div);
+            element.appendChild(outerDiv);
+
+        }else{
+            // message div
+            div.classList.add('message','me');
+            innerDiv.classList.add('me-color','innerDiv');
+            timeDiv.classList.add('timeDiv', 'hidden');
+            innerDiv.innerText = message;
+            let time = new Date();
+            timeDiv.innerText=time.toLocaleTimeString();
+            div.appendChild(innerDiv);
+            div.appendChild(timeDiv);
+            div.addEventListener('click', () => {
+                                timeDiv.classList.toggle('hidden');
+                            });
+            //append to chat area
+            element.appendChild(div);
+
+        }
+        element.scrollTop = element.scrollHeight;
+    });
+
+    connection.on("ReceiveImage", (chatroomId, senderId, imageUrl) => {
+        const div = document.createElement('div');
+        const innerDiv = document.createElement('div');
+        const timeDiv = document.createElement('div');
+        const element = document.querySelector('.chatArea[data-id="' + chatroomId + '"]');
+        const item = document.querySelector('.sidebarItem[data-id="' + chatroomId + '"]');
+        if(!item){
+            return; // Exit if item is deleted
+        }
+        item.children[1].children[1].innerText = 'Image'; // last message update
+        if(senderId !== currentUserId ){
+            item.children[1].children[1].classList.add('bold-fw');
+            const outerDiv = document.createElement('div');
+            outerDiv.classList.add('message','other');
+            //profie div
+            const userInfo = inforMap.get(chatroomId);
+            const ProfileDiv = document.createElement('div');
+            ProfileDiv.className = 'profile';
+            // Create the img element
+            const ProfImg = document.createElement('img');
+            ProfImg.src = userInfo.avatar;
+            ProfileDiv.appendChild(ProfImg);
+            outerDiv.appendChild(ProfileDiv);
+            // message div
+            innerDiv.classList.add('other-color','innerDiv');
+            timeDiv.classList.add('timeDiv', 'hidden');
+            // Create the image element
+            const img = document.createElement('img');
+            img.src = imageUrl; // Set the image source
+            img.className = 'chat-image';
+            innerDiv.appendChild(img);
+            let time = new Date();
+            timeDiv.innerText=time.toLocaleTimeString();
+            div.appendChild(innerDiv);
+            div.appendChild(timeDiv);
+            div.addEventListener('click', () => {
+                                timeDiv.classList.toggle('hidden');
+                            });
+            //append to chat area
+            outerDiv.appendChild(div);
+            element.appendChild(outerDiv);
+        }else{
+            div.classList.add('message','me');
+            // message div
+            innerDiv.classList.add('me-color','innerDiv');
+            timeDiv.classList.add('timeDiv', 'hidden');
+            // Create the image element
+            const img = document.createElement('img');
+            img.src = imageUrl; // Set the image source
+            img.className = 'chat-image';
+            innerDiv.appendChild(img);
+            let time = new Date();
+            timeDiv.innerText=time.toLocaleTimeString();
+            div.appendChild(innerDiv);
+            div.appendChild(timeDiv);
+            div.addEventListener('click', () => {
+                                timeDiv.classList.toggle('hidden');
+                            });
+            //append to chat area
+            element.appendChild(div);
+        }
+        
+        element.scrollTop = element.scrollHeight;
+    });
+    // start the app
+    start();
+
+    async function start() {
+        try {
+            await connection.start();
+            console.log("SignalR Connected.");
+            // Do your post-connection logic here
+            userList.innerHTML = '';
+            await fetchData();
+
+            for (const [roomId, userInfo] of inforMap) {
+                //displayed messsages set to 0
+                displayedMsgMap.set(roomId, 0);
+                createdRoomMap.set(roomId,true)
+
+                const div = document.createElement('div');
+                const wrapDiv = document.createElement('div');
+                const lastMsgDiv = document.createElement('div');
+                const innerDiv = document.createElement('div');
+                const threeDotDiv = document.createElement('div');
+                const popUpDiv = document.createElement('div');
+                div.dataset.id= roomId;
+                div.className = 'sidebarItem';
+                div.classList.add('default-bgr');
+                const ProfileDiv = document.createElement('div');
+                ProfileDiv.className = 'profile';
+                // Create the img element
+                const img = document.createElement('img');
+                // Set the attributes
+                img.src = userInfo.avatar;
+                ProfileDiv.appendChild(img);
+                // user name div
+                const NameDiv = document.createElement('div');
+                NameDiv.className = 'friends-credent';
+                NameDiv.innerHTML = `<span class="friends-name">
+                                    ${userInfo.userName}</span>`;
+                // last message div
+                lastMsgDiv.className = 'truncate';
+                wrapDiv.className = 'name-and-lastmsg';
+                wrapDiv.appendChild(NameDiv);
+                wrapDiv.appendChild(lastMsgDiv);
+                // three dots div
+                threeDotDiv.innerHTML = '<i class="fa-solid fa-ellipsis-vertical"></i>';
+                // popup div
+                popUpDiv.className = 'menu-popup hidden';
+                popUpDiv.innerHTML = `<span>
+                                    Delete </span>`;
+                innerDiv.className = 'dropdown';
+                innerDiv.appendChild(threeDotDiv);
+                innerDiv.appendChild(popUpDiv);
+                div.appendChild(ProfileDiv);
+                div.appendChild(wrapDiv);
+                div.appendChild(innerDiv);
+                userList.appendChild(div);
+                innerDiv.onclick = (e) => {
+                    e.stopPropagation(); // Prevent triggering the div click event
+                    
+                    popUpDiv.classList.toggle('hidden');
+                };
+                // 2. Close menu if user clicks outside of it
+                window.addEventListener('click', () => {
+                    if (!popUpDiv.classList.contains('hidden')) {
+                        popUpDiv.classList.add('hidden');
+                    }
+                });
+                
+                popUpDiv.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent triggering the div click event
+                    
+                    // Remove from UI
+                    const card = popUpDiv.closest('.sidebarItem');
+                    if(card){
+                        const roomId = card.dataset.id;
+                        const other = inforMap.get(roomId).userId;
+                        formData1 = new FormData();
+                        formData1.append("chatroomId", roomId);
+                        fetch('/Home/LeaveChatroom', {
+                            method: 'POST',
+                            body: formData1
+                        }).catch( error => console.error('Error leaving chatroom:', error));
+                        const chatAreaToRemove = document.querySelector('.chatArea[data-id="'
+                        + roomId + '"]');
+                        if (chatAreaToRemove) {
+                            chatAreaToRemove.remove();
+                        }
+                        // Delete chatroom
+                        console.log("Delete chatroom:", roomId);
+                        card.remove();
+                        if(isSelected === roomId){
+                            isSelected = null;
+                            uploadButton.disabled = true;
+                            sendButton.disabled = true;
+                        }
+                        if(createdRoomMap.has(roomId)){
+                            createdRoomMap.delete(roomId);
+                        }
+                        if(searchedUserMap.has(roomId)){
+                            searchedUserMap.delete(roomId);
+                        }
+                        if(inforMap.has(roomId)){
+                            inforMap.delete(roomId);
+                        }
+                        
+                    }
+                });
+                
+                div.onclick = async () => {
+                    prevSelected= isSelected;
+                    isSelected= roomId;
+                    if(prevSelected){
+                        const prevDiv = document.querySelector('.sidebarItem[data-id="'
+                         + prevSelected + '"]');
+                        prevDiv.classList.replace('selected-bgr','default-bgr');
+                    }
+                    div.classList.replace('default-bgr','selected-bgr');
+                    div.children[1].children[1].classList.remove('bold-fw');
+                    // Disable buttons initially
+                    uploadButton.disabled = false;
+                    sendButton.disabled = false;
+                    messageTextarea.focus();
+                    if(displayedMsgMap.get(roomId)===0){
+                        
+                        try {
+                            // move it to above connection.invoke
+                            await joinChatroom(roomId);
+                            await connection.invoke("JoinChatroom",roomId);
+                        } catch (err) {
+                            console.error("SignalR: Error invoking JoinChatroom:", err);
+                            return;
+                        }
+                        chatsSwitching(div);
+                    }
+                    else{
+                        chatsSwitching(div);
+                    }
+                };
+
+                const div1 = document.createElement('div');
+                div1.dataset.id= roomId;
+                div1.className = 'chatArea';
+                div1.addEventListener('scroll', () => {
+                    if (div1.scrollTop <= 1) {
+                        oldScrollHeight = div1.scrollHeight;
+                        const displayedMessage = displayedMsgMap.get(div1.dataset.id);
+                        loadOlder(div1.dataset.id,displayedMessage,() => {
+                        newScrollHeight = div1.scrollHeight;
+                        div1.scrollTop = newScrollHeight - oldScrollHeight;
+                        });
+                        console.log("Load older messages");
+                    }
+                });
+                chat.appendChild(div1);
+            }
+            document.querySelector('.my-profile img').src = myInfor.avatar;
+            document.querySelector('.my-profile .my-username').innerText = myInfor.userName;
+            
+        } catch (err) {
+            console.log(err);
+        }
+    };
+
+    async function fetchData() {
+        try {
+            const p1 = fetch('/Home/JoinedChatrooms');
+            const p2 = fetch('GetInfor?userId=' + currentUserId);
+            const [response1, response2] = await Promise.all([p1, p2]);
+            const data1 = await response1.json();
+            const data2 = await response2.json();
+
+            const results = await Promise.all(data1.map(async (item) => {
+                const response2 = await fetch('GetInfor?userId=' + item.otherUserId)
+                                    .catch(err => {
+                                     console.error('Error fetching other user info:', err);
+                                    });
+                const data = await response2.json();
+                // Return an object containing both the ID and the Data
+                return { id: item.roomId, data: data };
+            }));
+            // Update here to avoid slows down
+            results.forEach(result => {
+                if (!result.error) {
+                    inforMap.set(result.id, result.data);
+                }
+            });
+            myInfor = data2;
+        } catch (err) {
+            console.error("Fetch error:", err);
+        }
+    }
+
+    function formatTimestamp(timestamp) {
+        const past = new Date(timestamp);
+        const now = new Date();
+        
+        // Set to today at 00:00:00.000
+        const midnight = new Date(now); 
+        midnight.setHours(0, 0, 0, 0);
+
+        // If the timestamp is greater than or equal to midnight, it's today
+        if (past.getTime() >= midnight.getTime()) {
+            return past.toLocaleTimeString();
+        } else {
+            // It happened before today
+            return past.toUTCString();
+        }
+    }
+    // When user selects a chat room
+    async function joinChatroom(chatroomId) {
+        // messages still out side the Hub, wrong logic
+        // Optionally, fetch old messages for this chatroom
+        try{
+            const response = await fetch(`/Home/GetMessages?chatroomId=${chatroomId}`)
+            const messages = await response.json();
+
+            displayedMsgMap.set(chatroomId, messages.length);
+
+            //chat.innerHTML = '';
+            const element = document.querySelector('.chatArea[data-id="' + chatroomId + '"]');
+            const item = document.querySelector('.sidebarItem[data-id="' + chatroomId + '"]');
+            const lastMsg= messages.length > 0 ? messages[messages.length - 1] : null;
+            if(lastMsg){
+                if(lastMsg.type === "text"){
+                    item.children[1].children[1].innerText = lastMsg.message; // last message
+                }
+                else if(lastMsg.type === "image"){
+                    item.children[1].children[1].innerText = 'Image'; // last message
+                }
+            }
+            messages.forEach(msg => {
+                const div = document.createElement('div');
+                const innerDiv = document.createElement('div');
+                const timeDiv = document.createElement('div');
+                if(msg.senderId !== currentUserId){
+                    const outerDiv = document.createElement('div');
+                    outerDiv.classList.add('message','other');
+                    //profie div
+                    const userInfo = inforMap.get(chatroomId);
+                    const ProfileDiv = document.createElement('div');
+                    ProfileDiv.className = 'profile';
+                    // Create the img element
+                    const ProfImg = document.createElement('img');
+                    ProfImg.src = userInfo.avatar;
+                    ProfileDiv.appendChild(ProfImg);
+                    outerDiv.appendChild(ProfileDiv);
+                    // message div
+                    innerDiv.classList.add('other-color','innerDiv');
+                    timeDiv.classList.add('timeDiv', 'hidden');
+                    
+                    if(msg.type === "text"){
+                        innerDiv.innerText = msg.message;
+                    }
+                    else if(msg.type === "image"){
+                        // Create the image element
+                        const img = document.createElement('img');
+                        img.src = msg.message; // Set the image source
+                        img.className = 'chat-image';
+                        innerDiv.appendChild(img);
+                    }
+                    let time =formatTimestamp(msg.timestamp);
+                    timeDiv.innerText=time;
+                    div.appendChild(innerDiv);
+                    div.appendChild(timeDiv);
+                    div.addEventListener('click', () => {
+                            timeDiv.classList.toggle('hidden');
+                        });
+                    //append to chat area
+                    outerDiv.appendChild(div);
+                    element.appendChild(outerDiv);
+                }else{
+                    div.classList.add('message','me');
+                    // message div
+                    innerDiv.classList.add('me-color','innerDiv');
+                    timeDiv.classList.add('timeDiv', 'hidden');
+                    
+                    if(msg.type === "text"){
+                        innerDiv.innerText = msg.message;
+                    }
+                    else if(msg.type === "image"){
+                        // Create the image element
+                        const img = document.createElement('img');
+                        img.src = msg.message; // Set the image source
+                        img.className = 'chat-image';
+                        innerDiv.appendChild(img);
+                    }
+                    let time =formatTimestamp(msg.timestamp);
+                    timeDiv.innerText=time;
+                    div.appendChild(innerDiv);
+                    div.appendChild(timeDiv);
+                    div.addEventListener('click', () => {
+                            timeDiv.classList.toggle('hidden');
+                        });
+                    //append to chat area
+                    element.appendChild(div);
+                }
+            });
+            element.scrollTop = element.scrollHeight;
+        }
+        catch (error) {
+            // Catches errors from fetch() or the response.json() parsing
+            console.log("Failed to fetch data:", error.message);
+        }
+    }
+    
+    function chatsSwitching(item){
+        const id = item.dataset.id;
+        document.querySelectorAll(".chatArea").forEach(c => 
+            c.classList.remove("active")
+        );
+        document.querySelector('.chatArea[data-id="' + id + '"]')
+            .classList.add("active");
+    }
+
+    // simulate loading older messages
+    function loadOlder(chatroomId,displayedMessage, callback) {
+        fetch(`/Home/GetMessagesPage?chatroomId=${chatroomId}&displayedMessage=${displayedMessage}`)
+            .then(response => response.json())
+            .then(messages => {
+                if(messages.length !==0){
+                    var displayedMsgs= displayedMsgMap.get(chatroomId);
+                    displayedMsgs+= messages.length;
+                    displayedMsgMap.set(chatroomId, displayedMsgs);
+
+                    //chat.innerHTML = '';
+                    const element = document.querySelector('.chatArea[data-id="' + chatroomId + '"]');
+                    messages.forEach(msg => {
+                        const div = document.createElement('div');
+                        const innerDiv = document.createElement('div');
+                        const timeDiv = document.createElement('div');
+                        if(msg.senderId !== currentUserId){
+                            const outerDiv = document.createElement('div');
+                            outerDiv.classList.add('message','other');
+                            //profie div
+                            const userInfo = inforMap.get(chatroomId);
+                            const ProfileDiv = document.createElement('div');
+                            ProfileDiv.className = 'profile';
+                            // Create the img element
+                            const ProfImg = document.createElement('img');
+                            ProfImg.src = userInfo.avatar;
+                            ProfileDiv.appendChild(ProfImg);
+                            outerDiv.appendChild(ProfileDiv);
+                            // message div
+                            innerDiv.classList.add('other-color','innerDiv');
+                            timeDiv.classList.add('timeDiv', 'hidden');
+                            if(msg.type === "text"){
+                                innerDiv.innerText = msg.message;
+                            }
+                            else if(msg.type === "image"){
+                                // Create the image element
+                                const img = document.createElement('img');
+                                img.src = msg.message; // Set the image source
+                                img.className = 'chat-image';
+                                innerDiv.appendChild(img);
+                            }
+                            let time =formatTimestamp(msg.timestamp);
+                            timeDiv.innerText=time;
+                            div.appendChild(innerDiv);
+                            div.appendChild(timeDiv);
+                            div.addEventListener('click', () => {
+                                timeDiv.classList.toggle('hidden');
+                            });
+                            //append to chat area
+                            outerDiv.appendChild(div);
+                            element.insertBefore(outerDiv,element.firstChild);
+                        }else{
+                            div.classList.add('message','me');
+                            // message div
+                            innerDiv.classList.add('me-color','innerDiv');
+                            timeDiv.classList.add('timeDiv', 'hidden');
+                            if(msg.type === "text"){
+                                innerDiv.innerText = msg.message;
+                            }
+                            else if(msg.type === "image"){
+                                // Create the image element
+                                const img = document.createElement('img');
+                                img.src = msg.message;
+                                img.className = 'chat-image';
+                                innerDiv.appendChild(img);
+                            }
+                            let time =formatTimestamp(msg.timestamp);
+                            timeDiv.innerText=time;
+                            div.appendChild(innerDiv);
+                            div.appendChild(timeDiv);
+                            div.addEventListener('click', () => {
+                                timeDiv.classList.toggle('hidden');
+                            });
+                            //append to chat area
+                            element.insertBefore(div,element.firstChild);
+                        }
+                    });
+                    element.scrollTop = element.scrollHeight;
+                }else{
+                    console.log("No more older messages");
+                }
+                callback();
+            });
+    }
+    avatarFrame.addEventListener('click', () => {
+        logout.classList.toggle('hidden');
+    });
+    window.addEventListener('click', (e) => {
+        if (!avatarFrame.contains(e.target) 
+            && !logout.classList.contains('hidden')) {
+            logout.classList.add('hidden');
+        }
+    });
+    logout.addEventListener('click', async () => {
+        await connection.stop();
+        fetch('/Login/Logout')
+        .then(() => {
+            console.log('User logged out successfully.');
+            window.location.assign('/Login/Login'); // Redirect to login page
+        })
+        .catch( error => console.error('Error during logout:', error));
+    });
+    // Send message to SignalR hub
+    sendButton.addEventListener('click', async (e) => {
+        var displayedMsgs= displayedMsgMap.get(isSelected);
+        if(createdRoomMap.get(isSelected))
+        {
+            const res1 = await textOrImage();
+            if(res1){
+                displayedMsgs+= 1;
+                displayedMsgMap.set(isSelected, displayedMsgs);
+            }
+            
+        }
+        else{
+            // If the chatroom is not created, invite the user first 
+            const res2 = await activateChatroom();
+            //console.log("res2");
+            if(res2){
+                const res4 = await connection.invoke("JoinChatroom", isSelected);
+                //console.log("res4");
+                const userInfor = {
+                    userId: myInfor.userId,
+                    avatar: myInfor.avatar,
+                    userName: myInfor.userName
+                };
+                const res5 = await connection.invoke("Invite2Chat", 
+                            inforMap.get(isSelected).userId, isSelected,userInfor);
+                //console.log("res5");
+            }
+            const res3 = await textOrImage();
+            //console.log("res3");
+        }
+        
+    });
+
+    async function textOrImage(){
+        if(!file){
+            const message = messageTextarea.value;
+            if (message.trim()) {
+                connection.invoke("SendMessage",isSelected, message)
+                fetch('/Home/SendMessage2Db', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    chatroomId: isSelected,
+                    senderId: currentUserId,
+                    message: message,
+                    type: "text"
+                })
+                })
+                .catch(function (err) {
+                    console.error(err.toString());
+                    return false;
+                });
+                messageTextarea.value = '';
+                return true;
+            }
+            else {
+                return;
+            }
+        }
+        else{
+            try{
+                const downloadUrl = await sendImage2Sv(file);
+                connection.invoke("SendImage", isSelected, downloadUrl);
+                file = null; // Clear the file reference after sending
+                previewContainer.innerHTML = '';
+                return true;
+            }
+            catch (error) {
+                console.error("Error sending image:", error);
+                return false;
+            }
+        }
+    }
+
+    async function sendImage2Sv(fileObject) {
+    
+        const fileExtension = fileObject.name.split('.').pop();
+        const fileName = "upload." + fileExtension;
+        const mimeType = fileObject.type; // Use the original MIME type 
+
+        const imgFile = new File([fileObject], fileName, { type: mimeType });
+        const formData = new FormData();
+        formData.append('image', imgFile);
+        formData.append("groupId", isSelected);
+        for (const [key, value] of formData.entries()) {
+            console.log(`${key}: ${value}`);
+        }
+        const response = await fetch('/Home/UploadImage', {
+                            method: 'POST',
+                            body: formData
+                        })
+                        .catch(function (err) {
+                            return console.error('Error uploading image:', err.toString());
+                        });
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        const data = await response.json();
+        return data.url; // Return the download URL
+    }
+
+    async function activateChatroom(){
+        try {
+            // add other user id to formData1 and formData2
+            let getUserId= searchedUserMap.get(isSelected);
+            const formData3 = new FormData();
+            formData3.append("otherId", getUserId.userId);
+            for (const [key, value] of formData3.entries()) {
+                console.log(`${key}: ${value}`);
+            }
+            // Avoid the Error:"This document does not exist,
+            // it will not appear in queries or snapshots."
+            // due to the reference in AddMessage
+            const response = await fetch('/Home/EstablishChat', {
+                                            method: 'POST',
+                                            body: formData3
+                                        });
+            const data = await response.json();
+            const element = document.querySelector('.chatArea[data-id="' + isSelected + '"]');
+            const item = document.querySelector('.sidebarItem[data-id="' + isSelected + '"]');
+            // don't forget this
+            createdRoomMap.set(data.roomId,true);
+            createdRoomMap.delete(isSelected);
+            inforMap.set(data.roomId,getUserId);
+            element.dataset.id =data.roomId;
+            item.dataset.id =data.roomId;
+            return true;
+
+        } catch (err) {
+            console.error(err);
+            return false; // stop here if failed
+        }
+    }
+
+    messageTextarea.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            sendButton.click(); // Programmatically click the send button
+        }
+    });
+    // Auto-grow textarea
+    messageTextarea.addEventListener("input", function () {
+      this.style.height = "auto"; // reset
+      this.style.height = (this.scrollHeight) + "px"; // set new height
+    });
+    // Image preview handling
+    imageInput.addEventListener("change", function () {
+      file = this.files[0];
+      if (file) {
+            const reader = new FileReader();
+            reader.onload = e => {
+            // Clear any existing previews before creating a new one
+            previewContainer.innerHTML = '';
+            const div = document.createElement("div");
+            //imageCount ++;
+            div.className = "preview";
+            div.innerHTML = `
+                <img src="${e.target.result}">
+                <button onclick="removeImage(this)"><i class="fa-solid fa-xmark"></i></button>
+            `;
+            previewContainer.appendChild(div);
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+    function removeImage(buttonElement){
+        file= null; // Clear the file reference
+        // Remove the parent element (the image preview div)
+        buttonElement.parentElement.remove();
+    }
+    
+    // Search bar interaction
+    const input = document.getElementById('myInput');
+    const searchedUser = document.getElementById('searchedUser');
+    const leftArrow = document.getElementById('leftArrow');
+
+    
+    const showSearchedUser = () => {
+      userList.classList.replace('visible', 'hidden');
+      searchedUser.classList.replace('hidden', 'visible');
+    };
+
+    const hideSearchedUser = () => {
+      searchedUser.classList.replace('visible', 'hidden');
+      userList.classList.replace('hidden', 'visible');
+    };
+
+    const showArrowAndShrinkInput = () => {
+      leftArrow.classList.remove('hidden');
+      input.classList.remove('full-width');
+      input.classList.add('shrinked');
+    };
+
+    const hideArrowAndExpandInput = () => {
+      leftArrow.classList.add('hidden');
+      input.classList.remove('shrinked');
+      input.classList.add('full-width');
+    };
+
+    input.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevents it from triggering the global document click
+      showArrowAndShrinkInput();
+      showSearchedUser();
+    });
+    leftArrow.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hideArrowAndExpandInput();
+      hideSearchedUser();
+    });
+
+    input.addEventListener('keydown', function(event) {
+        if (event.key === 'Enter') {
+            // Prevent the default form submission behavior if necessary
+            event.preventDefault();
+            
+            const value = event.target.value;
+            if(value===myInfor.userName){
+                searchedUser.innerHTML = '';
+                return;
+            }
+            // remember to check searched user
+            // has already in searchedUserMap or not
+            // to avoid searching 2 times and more
+            // also check in inforMap
+            // to avoid adding the same user again in db
+            let foundKey = null;
+            let foundObj = null;
+            for (let [key, name] of inforMap.entries()) {
+                if (name.userName === value) {
+                    foundKey = key;
+                    foundObj = name;
+                    break; 
+                }
+            }
+
+            for (let [key, name] of searchedUserMap.entries()) {
+                if (name.userName === value) {
+                    foundKey = key;
+                    foundObj = name;
+                    break; 
+                }
+            }
+            // If found in inforMap or searchedUserMap
+            if(foundKey){
+                const div = document.createElement('div');
+                div.dataset.id= foundKey;
+                div.className = 'sidebarItem';
+                div.classList.add('default-bgr');
+                const ProfileDiv = document.createElement('div');
+                ProfileDiv.className = 'profile';
+                // Create the img element
+                const img = document.createElement('img');
+                // Set the attributes
+                img.src = foundObj.avatar;
+                ProfileDiv.appendChild(img);
+                // user name div
+                const NameDiv = document.createElement('div');
+                NameDiv.className = 'friends-credent';
+                NameDiv.innerHTML = `<span class="friends-name">
+                                    ${foundObj.userName}</span>`;
+                div.appendChild(ProfileDiv);
+                div.appendChild(NameDiv);
+                // don't forget this
+                searchedUser.appendChild(div);
+                
+                //userList.appendChild(div);
+                div.addEventListener('click', (e) => {
+                    prevSelected= isSelected;
+                    isSelected= div.dataset.id;
+                    hideArrowAndExpandInput();
+                    hideSearchedUser();
+                    //chatsSwitching(div);
+                    if(prevSelected){
+                        const prevDiv = document.querySelector('.sidebarItem[data-id="'
+                            + prevSelected + '"]');
+                        prevDiv.classList.replace('selected-bgr','default-bgr');
+                    }
+                    const element = document.querySelector('.sidebarItem[data-id="'
+                        + isSelected + '"]');
+                    element.click();
+                    // Disable buttons initially
+                    uploadButton.disabled = false;
+                    sendButton.disabled = false;
+                    messageTextarea.focus();
+                    searchedUser.innerHTML = '';
+                });
+            }else{
+                fetch(`/Home/SearchUser?userName=${value}`)
+                .then(response => response.json())
+                .then(users => {
+                    if (users.length > 0) {
+                        users.forEach(user =>{
+                            const div = document.createElement('div');
+                            //div.innerHTML = user.userName;
+                            div.className = 'sidebarItem';
+                            div.classList.add('default-bgr');
+                            const ProfileDiv = document.createElement('div');
+                            ProfileDiv.className = 'profile';
+                            // Create the img element
+                            const img = document.createElement('img');
+                            // Set the attributes
+                            img.src = user.avatar;
+                            ProfileDiv.appendChild(img);
+                            // user name div
+                            const NameDiv = document.createElement('div');
+                            NameDiv.className = 'friends-credent';
+                            NameDiv.innerHTML = `<span class="friends-name">
+                                                ${user.userName}</span>`;
+                            const lastMsgDiv = document.createElement('div');
+                            const wrapDiv = document.createElement('div');
+                            lastMsgDiv.className = 'truncate';
+                            wrapDiv.className = 'name-and-lastmsg';
+                            wrapDiv.appendChild(NameDiv);
+                            wrapDiv.appendChild(lastMsgDiv);
+                            div.appendChild(ProfileDiv);
+                            div.appendChild(wrapDiv);
+                            searchedUser.innerHTML = ''; // Clear previous results
+                            searchedUser.appendChild(div);
+                            div.addEventListener('click', async (e) => {
+                                const newUserDiv = document.createElement('div');
+                                const threeDotDiv = document.createElement('div');
+                                const popUpDiv = document.createElement('div');
+                                const lastMsgDiv = document.createElement('div');
+                                // Generate a random value for randomRoomId
+                                await getRandomId();
+                                createdRoomMap.set(randomRoomId,false);
+                                searchedUserMap.set(randomRoomId,user);
+                                newUserDiv.dataset.id=randomRoomId; 
+                                const clonedDiv = newUserDiv.cloneNode(true);
+                                newUserDiv.innerHTML = div.innerHTML;
+                                // update last message div
+                                lastMsgDiv.className = 'truncate';
+                                newUserDiv.children[1].appendChild(lastMsgDiv);
+                                // three dots div
+                                threeDotDiv.innerHTML = 
+                                '<i class="fa-solid fa-ellipsis-vertical"></i>';
+                                // popup div
+                                popUpDiv.className = 'menu-popup hidden';
+                                popUpDiv.innerHTML = `<span>
+                                                    Delete </span>`;
+                                const innerDiv = document.createElement('div');
+                                innerDiv.className = 'dropdown';
+                                innerDiv.appendChild(threeDotDiv);
+                                innerDiv.appendChild(popUpDiv);
+                                innerDiv.onclick = (e) => {
+                                    e.stopPropagation();
+                                    popUpDiv.classList.toggle('hidden');
+                                };
+                                window.addEventListener('click', () => {
+                                    if (!popUpDiv.classList.contains('hidden')) {
+                                        popUpDiv.classList.add('hidden');
+                                    }
+                                });
+                                popUpDiv.addEventListener('click', (e) => {
+                                    e.stopPropagation(); // Prevent triggering the div click event
+                                    // Remove from UI
+                                    const card = popUpDiv.closest('.sidebarItem');
+                                    if(card){
+                                        const roomId = card.dataset.id;
+                                        const other = inforMap.get(roomId).userId;
+                                        formData1 = new FormData();
+                                        formData1.append("chatroomId", roomId);
+                                        fetch('/Home/LeaveChatroom', {
+                                            method: 'POST',
+                                            body: formData1
+                                        }).catch( error => console.error('Error leaving chatroom:', error));
+                                        const chatAreaToRemove = document.querySelector('.chatArea[data-id="'
+                                        + roomId + '"]');
+                                        if (chatAreaToRemove) {
+                                            chatAreaToRemove.remove();
+                                        }
+                                        // Delete chatroom
+                                        console.log("Delete chatroom:", roomId);
+                                        card.remove();
+                                        if(isSelected === roomId){
+                                            isSelected = null;
+                                            uploadButton.disabled = true;
+                                            sendButton.disabled = true;
+                                        }
+                                        if(createdRoomMap.has(roomId)){
+                                            createdRoomMap.delete(roomId);
+                                        }
+                                        if(searchedUserMap.has(roomId)){
+                                            searchedUserMap.delete(roomId);
+                                        }
+                                        if(inforMap.has(roomId)){
+                                            inforMap.delete(roomId);
+                                        }
+                                        
+                                    }
+                                });
+                                newUserDiv.appendChild(innerDiv);
+                                clonedDiv.className = 'chatArea';
+                                newUserDiv.className = 'sidebarItem';
+                                newUserDiv.classList.add('default-bgr');
+                                newUserDiv.addEventListener('click', (e) => {
+                                    prevSelected=isSelected;
+                                    isSelected= randomRoomId;
+                                    chatsSwitching(newUserDiv);
+                                    newUserDiv.children[1].children[1].classList.remove('bold-fw');
+                                    if(prevSelected){
+                                        const prevDiv = document.querySelector('.sidebarItem[data-id="'
+                                         + prevSelected + '"]');
+                                        prevDiv.classList.replace('selected-bgr','default-bgr');
+                                    }
+                                    newUserDiv.classList.replace('default-bgr','selected-bgr');
+
+                                    // Disable buttons initially
+                                    uploadButton.disabled = false;
+                                    sendButton.disabled = false;
+                                    messageTextarea.focus();
+                                });
+                                chat.appendChild(clonedDiv);
+                                userList.insertBefore(newUserDiv,userList.firstChild);
+                                isSelected= randomRoomId;
+                                hideArrowAndExpandInput();
+                                hideSearchedUser();
+                                chatsSwitching(newUserDiv);
+                                // Disable buttons initially
+                                uploadButton.disabled = false;
+                                sendButton.disabled = false;
+                                messageTextarea.focus();
+                                searchedUser.innerHTML = '';
+                            });
+                        });
+                        
+                    }
+                    else {
+                        console.log("No user found");
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching search results:', error);
+                });
+                // Clear the input after hitting enter
+                event.target.value = '';
+            }
+        }
+        
+    });
+
+    async function getRandomId(){
+        const response = await fetch(`/Home/GetRandomChatroomId`).catch(err => {
+                console.error('Error getting random room ID:', err);
+            });
+        const roomId = await response.text();
+        if (roomId){
+            randomRoomId=roomId;     
+        } else {
+            console.log("No random Id found");
+        }
+    }
+
+</script>
+
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        background-color: #f0f0f0;
+    }
+
+    *, *::before, *::after {
+        box-sizing: inherit;
+    }
+
+    .parent {
+        display: flex;
+        flex-direction: row;
+        width: 100%;
+        height: 100%;
+        margin: 0 auto;
+        gap: 10px;
+        padding: 20px;
+    }
+    .searchAndList {
+        width: 250px;;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+    #searchedUser{
+        background: aliceblue;
+        width: 100%;
+        height: calc(100% - 32px);
+        border: 1px solid #ccc;
+        border-radius: 10px;
+        padding: 10px;
+    }
+    #userList {
+        background: aliceblue;
+        width: 100%;
+        height: calc(100% - 35px);
+        flex-shrink: 0;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    #chatApp {
+        flex-grow: 1;
+        min-width: 0;
+        background-color: aliceblue;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .chatArea {
+        
+        flex: 1 1 auto;
+        overflow-y: auto;
+        padding: 10px;
+        display: none; /* hide all chat areas by default */
+        flex-direction: column;
+        gap: 10px;
+        height: 100%;
+    }
+
+    #chat{
+        border: 1px solid gray;
+        border-radius: 10px;
+        height: 400px;
+    }
+    .active {
+        display: flex;     /* show only active chat */
+    }
+    .message {
+        max-width: 60%;
+        padding: 10px;
+        word-wrap: break-word;
+        cursor: pointer;
+    }
+
+    .message.other {
+        display: flex;
+        align-self: flex-start;
+    }
+
+    .message.me {
+        align-self: flex-end;
+    }
+
+    .other-color {
+        background-color: lightblue;
+    }
+
+    .me-color {
+        place-self: flex-end;
+        background-color: #007bff;
+        color: white;
+    }
+
+    #messageContainer {
+        display: flex;
+        flex-direction: row;
+        gap: 10px;
+        margin-top: 10px;
+    }
+
+    #messageContainer textarea {
+        flex-grow: 1;
+        min-height: 40px;
+        border: 1px solid gray;
+        border-radius: 10px;
+        resize: none;
+    }
+
+    #messageContainer button {
+        width: 100px;
+        border: 1px solid gray;
+        border-radius: 10px;
+    }
+    .sidebarItem{
+        height: 75px;
+        display: flex;
+        border: 1px solid gray;
+        border-radius: 10px;
+        margin-bottom: 5px;
+        padding: 2px;
+        cursor: pointer;
+    }
+    .sidebarItem:hover .dropdown {
+        opacity: 1;
+    }
+    .default-bgr{
+        background-color: white;
+    }
+    .selected-bgr{
+        background-color: lightgray;
+    }
+    .dropdown {
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        border-radius: 50%;
+        padding: 10px;
+        position: relative;
+        }
+    .menu-popup {
+        text-align: center;
+        position: absolute;
+        left:20px;
+        top: 0px;
+        background-color: #0dcaf0;
+        border-radius: 8px;
+        min-width: 220px;
+        z-index: 100;
+        padding: 8px 0;
+    }
+    .logout-popup {
+        text-align: center;
+        position: absolute;
+        left:65px;
+        top: 160px;
+        background-color: #0dcaf0;
+        border-radius: 0px 10px 10px 10px;
+        min-width: 220px;
+        z-index: 100;
+        padding: 8px 0;
+        }
+    .truncate {
+        max-width: 150px;
+        white-space: nowrap; /* Prevents text from wrapping to a new line */
+        overflow: hidden;    /* Hides the text that goes outside the box */
+        text-overflow: ellipsis; /* The magic property that adds the '...' */
+    }
+    .name-and-lastmsg {
+        padding: 5px;
+        width: 150px;
+        display: flex;
+        flex-direction: column;
+        align-items: start;
+    }
+    .chat-box {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid gray;
+      border-radius: 18px;
+      padding: 0px 6px 6px 6px;
+    }
+
+    .preview-container {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .preview {
+      position: relative;
+      display: inline-block;
+    }
+
+    .preview img {
+      width: 55px;
+      height: 55px;
+      border-radius: 10px;
+      object-fit: cover;
+    }
+
+    .preview button {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      border: none;
+      background: #333;
+      color: white;
+      border-radius: 50%;
+      cursor: pointer;
+      width: 18px;
+      height: 18px;
+      font-size: 11px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .icon-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 20px;
+      color: #666;
+    }
+    .chat-image {
+        width: 200px;
+        max-width: 100%; /* Ensures the image doesn't overflow its container */
+        height: auto;   /* Maintains the image's aspect ratio */
+    }
+    /* Added from test UI project */
+    .wrapper {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .left-arrow {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2em;
+    }
+
+    /* Input sizing */
+    input.search {
+        border-radius: 5px;
+        width: 100%;
+        transition: width 0.3s ease;
+    }
+
+    input.shrinked {
+        width: calc(100% - 40px); /* Adjust based on arrow width + gap */
+    }
+
+    .click-to-hide {
+        height: 100px;
+        width: auto;
+        background-color: #f0f0f0;
+        padding: 10px;
+        cursor: pointer;
+        margin-top: 10px;
+    }
+
+    .content {
+        margin-top: 10px;
+    }
+
+    .hidden {
+        display: none;
+    }
+
+    .visible {
+        display: block;
+    }
+    .profile {
+        margin-top: 10px;
+        flex-shrink: 0;
+        height: 45px;
+        width: 45px;
+        overflow: hidden;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+    .profile img{
+        object-fit: cover;
+        width: 100%;
+        height: 100%;
+    }
+    .friends-credent {
+        flex: 1 1 auto;
+        text-align: center;
+        padding: 5px;
+    }
+    .innerDiv {
+        margin-left: 5px;
+        margin-top: 15px;
+        width: fit-content;
+        padding: 10px;
+        border-radius: 10px;
+        font-size: larger;
+    }
+    .timeDiv {
+        font-family: monospace;
+        font-size: small;
+    }
+    .normal-fw{
+        font-weight: normal;
+    }
+    .bold-fw{
+        font-weight: bold;
+    }
+    .h2, h2 {
+        text-align: center;
+    }
+    .avatar-frame{
+        width:150px;
+        height:150px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        padding: 10px;
+        background-color: aliceblue;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        position: relative;
+        cursor: pointer;
+    }
+    .avatarArea{
+        margin-right:150px
+    }
+</style>

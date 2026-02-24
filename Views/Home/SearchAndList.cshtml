@@ -1,0 +1,104 @@
+@{
+    ViewData["Title"] = "Messenger-style Search";
+    var recentChats = ViewBag.RecentChats as List<string>; // sample data
+}
+
+<style>
+    body {
+        font-family: Arial, sans-serif;
+        background-color: #f0f2f5;
+        padding: 20px;
+    }
+
+    .search-container {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 30px;
+    }
+
+    .search-box {
+        width: 600px;
+        display: flex;
+        border: 1px solid #ccc;
+        border-radius: 30px;
+        overflow: hidden;
+        background-color: white;
+    }
+
+    .search-box input[type="text"] {
+        flex-grow: 1;
+        border: none;
+        padding: 10px 20px;
+        font-size: 18px;
+        outline: none;
+    }
+
+    .search-box button {
+        border: none;
+        background-color: #1877f2;
+        color: white;
+        padding: 10px 20px;
+        font-size: 18px;
+        cursor: pointer;
+    }
+
+    .chat-list {
+        max-width: 600px;
+        margin: 0 auto;
+        background-color: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .chat-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px solid #eee;
+    }
+
+    .chat-item:last-child {
+        border-bottom: none;
+    }
+
+    .chat-avatar {
+        width: 50px;
+        height: 50px;
+        background-color: #ddd;
+        border-radius: 50%;
+        margin-right: 15px;
+    }
+
+    .chat-name {
+        font-size: 18px;
+        font-weight: 500;
+    }
+</style>
+
+<!-- Search bar -->
+<div class="search-container">
+    <form asp-action="Search" asp-controller="Home" method="get" class="search-box">
+        <input type="text" name="query" placeholder="Search people..." />
+    
+    </form>
+</div>
+
+<!-- Recent Chats -->
+<div class="chat-list">
+    <h3>Recent Chats</h3>
+    @if (recentChats != null && recentChats.Count > 0)
+    {
+        foreach (var name in recentChats)
+        {
+            <div class="chat-item">
+                <div class="chat-avatar"></div>
+                <div class="chat-name">@name</div>
+            </div>
+        }
+    }
+    else
+    {
+        <p>No recent chats</p>
+    }
+</div>
