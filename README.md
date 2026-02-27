@@ -48,6 +48,7 @@ Run the application:
 Bash
 dotnet run
 📂 Project Structure
+
 ChatApp.Controller/ - The core logic and controllers.
 
 ChatApp.Models/ - Data structures and DTOs.
@@ -57,3 +58,20 @@ ChatApp.Views/ - The frontend client application.
 ChatApp.Service/ - For Firebase Service, Image Checking, Cache
 
 ChatApp.Hub/  - SignalR
+
+Demo send text message:
+
+[text.webm](https://github.com/user-attachments/assets/1e5c020e-8571-49e7-9a4e-ae5fca26076d)
+
+Demo send image message:
+
+[send-image.webm](https://github.com/user-attachments/assets/da7a6162-477f-49e4-a200-05899d3c5a58)
+
+Demo load older messages:
+
+[load-older-message.webm](https://github.com/user-attachments/assets/40e57a77-56ca-4ead-91af-dae248d41183)
+
+Demo search user:
+
+[search-user.webm](https://github.com/user-attachments/assets/0eec8dbf-fad2-4956-93a9-f7907fd1435d)
+
