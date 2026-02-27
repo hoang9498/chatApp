@@ -772,10 +772,18 @@
         }
         
     });
-
+    /*
+    sendButton.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendButton.click(); // Programmatically click the send button
+        }
+    });
+    */
     async function textOrImage(){
         if(!file){
             const message = messageTextarea.value;
+            messageTextarea.value = '';
             if (message.trim()) {
                 connection.invoke("SendMessage",isSelected, message)
                 fetch('/Home/SendMessage2Db', {
@@ -794,7 +802,6 @@
                     console.error(err.toString());
                     return false;
                 });
-                messageTextarea.value = '';
                 return true;
             }
             else {
@@ -803,10 +810,10 @@
         }
         else{
             try{
+                previewContainer.innerHTML = '';
                 const downloadUrl = await sendImage2Sv(file);
                 connection.invoke("SendImage", isSelected, downloadUrl);
                 file = null; // Clear the file reference after sending
-                previewContainer.innerHTML = '';
                 return true;
             }
             catch (error) {
@@ -868,6 +875,7 @@
             inforMap.set(data.roomId,getUserId);
             element.dataset.id =data.roomId;
             item.dataset.id =data.roomId;
+            isSelected = data.roomId;
             return true;
 
         } catch (err) {
@@ -903,6 +911,7 @@
                 <button onclick="removeImage(this)"><i class="fa-solid fa-xmark"></i></button>
             `;
             previewContainer.appendChild(div);
+            sendButton.focus();
             };
             reader.readAsDataURL(file);
         }

@@ -20,8 +20,11 @@ namespace chatApp.Services
             string chatRoomId)
         {
             if (_cacheService.ContainsKey(userId, chatRoomId))
+            {
+                Console.WriteLine("MethodA");
                 return true;
-
+            }
+            Console.WriteLine("MethodB");
             var existsInDb =
                 await _firestoreService.FindRoomId(userId, chatRoomId);
 

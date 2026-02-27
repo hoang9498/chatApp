@@ -30,14 +30,16 @@ public class ChatHub : Hub
         var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId))
             throw new HubException("Unauthorized");
-        if(!await _hubAuthService.UserCanAccessRoom(userId,chatroomId))
+        if(!await _hubAuthService.UserCanAccessRoom(userId, chatroomId))
+        {
             throw new HubException("Forbidden");
+        }
         await Clients.Group(chatroomId).SendAsync("ReceiveMessage", chatroomId,userId, message);
     }
 
     public async Task SendImage(string chatroomId, string imageUrl)
     {
-        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value; 
         if (string.IsNullOrEmpty(userId))
             throw new HubException("Unauthorized");
         if(!await _hubAuthService.UserCanAccessRoom(userId,chatroomId))

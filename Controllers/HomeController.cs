@@ -78,22 +78,35 @@ namespace chatApp.Controllers
         }
         // find roomID
         private async Task<(bool Accessible, string? RoomId)> CheckMember(
-        string OtherId)
+        string OtherId, bool ReverseMode)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            var collectionRef = _firestoreService._db.Collection("users").Document(userId)
-                            .Collection("joinedchatrooms");
-            Query query = collectionRef.WhereEqualTo("otherUserId", OtherId);
-
-            QuerySnapshot snapshot = await query.GetSnapshotAsync();
-
-            if (snapshot.Documents.Count > 0)
+            if (!ReverseMode)
             {
-                string? rId = snapshot.Documents.FirstOrDefault()?.Id;
-                return (true, rId);
+                var collectionRef1 = _firestoreService._db.Collection("users").Document(userId)
+                            .Collection("joinedchatrooms");
+                Query query1 = collectionRef1.WhereEqualTo("otherUserId", OtherId);
+                QuerySnapshot snapshot1 = await query1.GetSnapshotAsync();
+
+                if (snapshot1.Documents.Count > 0)
+                {
+                    string? rId = snapshot1.Documents.FirstOrDefault()?.Id;
+                    return (true, rId);
+                }
+                return (false, null);
             }
             else
             {
+                var collectionRef2 = _firestoreService._db.Collection("users").Document(OtherId)
+                            .Collection("joinedchatrooms");
+                Query query2 = collectionRef2.WhereEqualTo("otherUserId", userId);
+                QuerySnapshot snapshot2 = await query2.GetSnapshotAsync();
+
+                if (snapshot2.Documents.Count > 0)
+                {
+                    string? rId = snapshot2.Documents.FirstOrDefault()?.Id;
+                    return (true, rId);
+                }
                 return (false, null);
             }
         }
@@ -313,12 +326,12 @@ namespace chatApp.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
             // replace with CanUser...
-            var t1 = CheckMember(otherId);
-            var t2 = CheckMember(userId);
+            var t1 = CheckMember(otherId,false);
+            var t2 = CheckMember(otherId,true);
             await Task.WhenAll(t1,t2);
             
             bool check1 =t1.Result.Accessible; // B in A chat
-            bool check2 =t1.Result.Accessible; // A in B chat
+            bool check2 =t2.Result.Accessible; // A in B chat
             string roomId = GetRandomChatroomId();
             try{
                 if (!check1&&!check2)
@@ -338,7 +351,7 @@ namespace chatApp.Controllers
                         await AddToJoinedChatroom(userId,rId1,otherId);
                         _cacheService.Add(userId,rId1,otherId);
                     }
-                    return Ok();
+                    return Ok(new{roomId = rId1});
                 }
                 else if(check1&&!check2)
                 {
@@ -347,11 +360,11 @@ namespace chatApp.Controllers
                     {
                         await AddToJoinedChatroom(otherId,rId2,userId);
                     }
-                    return Ok();
+                    return Ok(new{roomId = rId2});
                 }
                 else
                 {
-                    return Ok("Room Exist");
+                    return Ok(new{roomId = t1.Result.RoomId});
                 }
             }
             catch (Exception ex)
@@ -490,7 +503,7 @@ namespace chatApp.Controllers
             try
             {
                 var task = new FirebaseStorage(
-                "your-firebase-storage-bucket.appspot.com",
+                "easy-chat-backend-e2e73.appspot.com",
                 new FirebaseStorageOptions
                 {
                     AuthTokenAsyncFactory = () => Task.FromResult(firebaseToken),
